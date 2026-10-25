@@ -5,7 +5,7 @@ import sys
 from pathlib import Path
 
 def get_repo_root() -> Path:
-    res = subprocess.run(["git", "rev-parse", "--show-toplevel"], capture_output=True, text=True, check=True)
+    res = subprocess.run(["git", "rev-parse", "--show-toplevel"], capture_output=True, text=True, encoding="utf-8", errors="replace", check=True)
     return Path(res.stdout.strip())
 
 def workspace(plan_file: str) -> Path:
@@ -41,12 +41,12 @@ def task_brief(plan_file: str, n: int) -> Path:
 
 def review_package(plan_file: str, base: str, head: str) -> Path:
     ws = workspace(plan_file)
-    base_short = subprocess.run(["git", "rev-parse", "--short", base], capture_output=True, text=True, check=True).stdout.strip()
-    head_short = subprocess.run(["git", "rev-parse", "--short", head], capture_output=True, text=True, check=True).stdout.strip()
+    base_short = subprocess.run(["git", "rev-parse", "--short", base], capture_output=True, text=True, encoding="utf-8", errors="replace", check=True).stdout.strip()
+    head_short = subprocess.run(["git", "rev-parse", "--short", head], capture_output=True, text=True, encoding="utf-8", errors="replace", check=True).stdout.strip()
     
-    log_res = subprocess.run(["git", "log", "--oneline", f"{base}..{head}"], capture_output=True, text=True, check=True)
-    stat_res = subprocess.run(["git", "diff", "--stat", f"{base}..{head}"], capture_output=True, text=True, check=True)
-    diff_res = subprocess.run(["git", "diff", "-U10", f"{base}..{head}"], capture_output=True, text=True, check=True)
+    log_res = subprocess.run(["git", "log", "--oneline", f"{base}..{head}"], capture_output=True, text=True, encoding="utf-8", errors="replace", check=True)
+    stat_res = subprocess.run(["git", "diff", "--stat", f"{base}..{head}"], capture_output=True, text=True, encoding="utf-8", errors="replace", check=True)
+    diff_res = subprocess.run(["git", "diff", "-U10", f"{base}..{head}"], capture_output=True, text=True, encoding="utf-8", errors="replace", check=True)
     
     out_file = ws / f"review-{base_short}..{head_short}.diff"
     content = (
