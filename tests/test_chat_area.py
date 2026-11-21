@@ -20,6 +20,17 @@ from messaging_app.ui.icons import _ICON_CACHE
 from messaging_app.ui.theme import Theme
 
 
+@pytest.fixture(scope="module")
+def root():
+    """Shared CTk root window for chat area tests to avoid repeated Tk interpreter cycles."""
+    r = customtkinter.CTk()
+    yield r
+    try:
+        r.destroy()
+    except Exception:
+        pass
+
+
 @pytest.fixture(autouse=True)
 def _clean_icons_and_tk():
     """Ensure clean icon cache before and after each test."""
@@ -33,12 +44,11 @@ def test_components_package_exports() -> None:
     assert ChatArea is DirectChatArea
 
 
-def test_chat_area_creation_and_messaging() -> None:
+def test_chat_area_creation_and_messaging(root) -> None:
     """Verify initialization, contact binding, and message appending."""
-    root = customtkinter.CTk()
+    sent_payloads: list[str] = []
+    chat_area = ChatArea(root, on_send_message=lambda text: sent_payloads.append(text))
     try:
-        sent_payloads: list[str] = []
-        chat_area = ChatArea(root, on_send_message=lambda text: sent_payloads.append(text))
         chat_area.pack(fill="both", expand=True)
 
         assert chat_area.active_contact is None
@@ -58,14 +68,14 @@ def test_chat_area_creation_and_messaging() -> None:
         assert len(chat_area.get_messages()) == 1
         assert chat_area.get_messages()[0].content == "Hello from Alice"
     finally:
-        root.destroy()
+        if chat_area.winfo_exists():
+            chat_area.destroy()
 
 
-def test_chat_area_offline_contact() -> None:
+def test_chat_area_offline_contact(root) -> None:
     """Verify offline contact header status styling."""
-    root = customtkinter.CTk()
+    chat_area = ChatArea(root, on_send_message=lambda t: None)
     try:
-        chat_area = ChatArea(root, on_send_message=lambda t: None)
         bob = User("bob", "bob", "Bob Martinez", "BM", False)
 
         chat_area.set_active_contact(bob)
@@ -74,14 +84,14 @@ def test_chat_area_offline_contact() -> None:
         assert chat_area.header_avatar.cget("text") == "BM"
         assert "Offline" in chat_area.header_status.cget("text")
     finally:
-        root.destroy()
+        if chat_area.winfo_exists():
+            chat_area.destroy()
 
 
-def test_chat_area_set_messages() -> None:
+def test_chat_area_set_messages(root) -> None:
     """Verify setting batch of messages populates the stream and replaces existing."""
-    root = customtkinter.CTk()
+    chat_area = ChatArea(root, on_send_message=lambda t: None)
     try:
-        chat_area = ChatArea(root, on_send_message=lambda t: None)
         alice = User("alice", "alice", "Alice Smith", "AS", True)
         chat_area.set_active_contact(alice)
 
@@ -98,16 +108,15 @@ def test_chat_area_set_messages() -> None:
         assert len(chat_area.get_messages()) == 1
         assert chat_area.get_messages()[0].id == "m3"
     finally:
-        root.destroy()
+        if chat_area.winfo_exists():
+            chat_area.destroy()
 
 
-def test_chat_area_send_interactions() -> None:
+def test_chat_area_send_interactions(root) -> None:
     """Verify composer entry send on button click and Return key."""
-    root = customtkinter.CTk()
+    on_send_mock = MagicMock()
+    chat_area = ChatArea(root, on_send_message=on_send_mock)
     try:
-        on_send_mock = MagicMock()
-        chat_area = ChatArea(root, on_send_message=on_send_mock)
-
         # 1. Send via button invoke with valid text
         chat_area.input_entry.delete(0, "end")
         chat_area.input_entry.insert(0, "Hello World")
@@ -130,14 +139,14 @@ def test_chat_area_send_interactions() -> None:
         assert on_send_mock.call_args[0][0] == "Pressing enter"
         assert chat_area.input_entry.get() == ""
     finally:
-        root.destroy()
+        if chat_area.winfo_exists():
+            chat_area.destroy()
 
 
-def test_chat_area_reset_to_none_contact() -> None:
+def test_chat_area_reset_to_none_contact(root) -> None:
     """Verify setting contact to None restores empty state and clears header."""
-    root = customtkinter.CTk()
+    chat_area = ChatArea(root, on_send_message=lambda t: None)
     try:
-        chat_area = ChatArea(root, on_send_message=lambda t: None)
         alice = User("alice", "alice", "Alice Smith", "AS", True)
         chat_area.set_active_contact(alice)
         chat_area.append_message(Message("m1", "alice", "me", "Hi", is_outgoing=False))
@@ -152,4 +161,5 @@ def test_chat_area_reset_to_none_contact() -> None:
         assert chat_area.header_status.cget("text") == ""
         assert chat_area.header_avatar.cget("text") == ""
     finally:
-        root.destroy()
+        if chat_area.winfo_exists():
+            chat_area.destroy()

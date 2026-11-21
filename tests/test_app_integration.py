@@ -210,11 +210,23 @@ def test_main_entry_point(monkeypatch: pytest.MonkeyPatch) -> None:
     mock_instance = MagicMock()
     mock_app_cls.return_value = mock_instance
 
+    mock_service_cls = MagicMock()
+    mock_service_instance = MagicMock()
+    mock_service_cls.return_value = mock_service_instance
+
+    mock_db_cls = MagicMock()
+    mock_db_instance = MagicMock()
+    mock_db_cls.return_value = mock_db_instance
+
     monkeypatch.setattr(main_module, "MessagingApp", mock_app_cls)
+    monkeypatch.setattr(main_module, "TcpMessagingService", mock_service_cls)
+    monkeypatch.setattr(main_module, "DatabaseCache", mock_db_cls)
 
     main_module.main()
 
     assert mock_app_cls.called
-    assert isinstance(mock_app_cls.call_args[1]["service"], DummyMessagingService)
+    assert mock_app_cls.call_args[1]["service"] == mock_service_instance
+    assert mock_service_instance.start.called
     assert mock_instance.mainloop.called
+    assert mock_service_instance.stop.called
 

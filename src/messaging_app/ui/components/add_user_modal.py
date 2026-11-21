@@ -137,7 +137,14 @@ class AddUserModal(customtkinter.CTkToplevel):
 
     def set_error(self, message: str) -> None:
         """Display validation error message inline in red text and re-enable submit button."""
-        self.error_label.configure(text=message)
+        try:
+            if not self.winfo_exists():
+                return
+        except Exception:
+            return
+
+        if hasattr(self, "error_label") and self.error_label.winfo_exists():
+            self.error_label.configure(text=message)
         if hasattr(self, "submit_btn") and self.submit_btn.winfo_exists():
             self.submit_btn.configure(state="normal", text="Add Contact")
 

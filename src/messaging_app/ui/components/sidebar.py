@@ -1,5 +1,6 @@
 """Sidebar component featuring user header, search, add-contact button, and contact list."""
 
+import dataclasses
 from typing import Any, Callable, Optional
 import customtkinter
 
@@ -253,7 +254,11 @@ class Sidebar(customtkinter.CTkFrame):
 
     def update_presence(self, user_id: str, is_online: bool) -> None:
         """Update presence status for a contact in sidebar cards and stored contact objects."""
-        import dataclasses
+        try:
+            if not self.winfo_exists():
+                return
+        except Exception:
+            return
 
         self._all_contacts = [
             dataclasses.replace(c, is_online=is_online) if c.id == user_id else c

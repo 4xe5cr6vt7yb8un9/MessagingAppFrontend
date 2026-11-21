@@ -1,5 +1,7 @@
 """Main Application Window coordinating Sidebar, ChatArea, and MessagingService."""
 
+import dataclasses
+import tkinter
 from typing import Any, Optional
 import customtkinter
 
@@ -19,7 +21,6 @@ class MessagingApp(customtkinter.CTk):
     def __init__(self, service: MessagingServiceProtocol, **kwargs: Any) -> None:
         """Initialize main application window, configure layouts, and wire service events."""
         super().__init__(**kwargs)
-        import tkinter
         tkinter._default_root = self
         self.service: MessagingServiceProtocol = service
 
@@ -142,7 +143,11 @@ class MessagingApp(customtkinter.CTk):
 
     def _handle_presence_update_ui(self, user_id: str, is_online: bool) -> None:
         """Update contact presence dot in sidebar and chat header."""
-        import dataclasses
+        try:
+            if not self.winfo_exists():
+                return
+        except Exception:
+            return
 
         if hasattr(self, "sidebar") and hasattr(self.sidebar, "update_presence"):
             self.sidebar.update_presence(user_id, is_online)

@@ -19,6 +19,17 @@ from messaging_app.ui.icons import _ICON_CACHE
 from messaging_app.ui.theme import Theme
 
 
+@pytest.fixture(scope="module")
+def root():
+    """Shared CTk root window for sidebar tests to avoid repeated Tk interpreter cycles."""
+    r = customtkinter.CTk()
+    yield r
+    try:
+        r.destroy()
+    except Exception:
+        pass
+
+
 @pytest.fixture(autouse=True)
 def _clean_icons_and_tk():
     """Ensure clean icon cache before and after each test."""
@@ -32,21 +43,19 @@ def test_components_package_exports() -> None:
     assert Sidebar is DirectSidebar
 
 
-def test_sidebar_initialization_and_filtering() -> None:
+def test_sidebar_initialization_and_filtering(root) -> None:
     """Verify initialization, contact population, and search filtering."""
-    root = customtkinter.CTk()
+    me = User("me", "me", "You", "ME", True)
+    selected_users: list[User] = []
+
+    sidebar = Sidebar(
+        root,
+        current_user=me,
+        on_contact_selected=lambda u: selected_users.append(u),
+        on_add_contact_clicked=lambda: None,
+        on_theme_toggle_clicked=lambda: None,
+    )
     try:
-        me = User("me", "me", "You", "ME", True)
-        selected_users: list[User] = []
-
-        sidebar = Sidebar(
-            root,
-            current_user=me,
-            on_contact_selected=lambda u: selected_users.append(u),
-            on_add_contact_clicked=lambda: None,
-            on_theme_toggle_clicked=lambda: None,
-        )
-
         contacts = [
             User("alice", "alice", "Alice Smith", "AS", True),
             User("bob", "bob", "Bob Martinez", "BM", False),
@@ -72,24 +81,23 @@ def test_sidebar_initialization_and_filtering() -> None:
         sidebar.apply_filter("nonexistent")
         assert len(sidebar.get_displayed_contacts()) == 0
     finally:
-        root.destroy()
+        if sidebar.winfo_exists():
+            sidebar.destroy()
 
 
-def test_sidebar_contact_selection_and_callbacks() -> None:
+def test_sidebar_contact_selection_and_callbacks(root) -> None:
     """Verify contact selection updates state and invokes callback."""
-    root = customtkinter.CTk()
+    me = User("me", "me", "You", "ME", True)
+    selected_users: list[User] = []
+
+    sidebar = Sidebar(
+        root,
+        current_user=me,
+        on_contact_selected=lambda u: selected_users.append(u),
+        on_add_contact_clicked=lambda: None,
+        on_theme_toggle_clicked=lambda: None,
+    )
     try:
-        me = User("me", "me", "You", "ME", True)
-        selected_users: list[User] = []
-
-        sidebar = Sidebar(
-            root,
-            current_user=me,
-            on_contact_selected=lambda u: selected_users.append(u),
-            on_add_contact_clicked=lambda: None,
-            on_theme_toggle_clicked=lambda: None,
-        )
-
         contacts = [
             User("alice", "alice", "Alice Smith", "AS", True),
             User("bob", "bob", "Bob Martinez", "BM", False),
@@ -110,25 +118,24 @@ def test_sidebar_contact_selection_and_callbacks() -> None:
         assert sidebar._card_widgets["bob"].cget("fg_color") == Theme.BG_SELECTED
         assert sidebar._card_widgets["alice"].cget("fg_color") == Theme.BG_SURFACE
     finally:
-        root.destroy()
+        if sidebar.winfo_exists():
+            sidebar.destroy()
 
 
-def test_sidebar_action_buttons() -> None:
+def test_sidebar_action_buttons(root) -> None:
     """Verify Add Contact and Theme Toggle callbacks."""
-    root = customtkinter.CTk()
+    me = User("me", "me", "You", "ME", True)
+    add_clicked = MagicMock()
+    theme_clicked = MagicMock()
+
+    sidebar = Sidebar(
+        root,
+        current_user=me,
+        on_contact_selected=lambda u: None,
+        on_add_contact_clicked=add_clicked,
+        on_theme_toggle_clicked=theme_clicked,
+    )
     try:
-        me = User("me", "me", "You", "ME", True)
-        add_clicked = MagicMock()
-        theme_clicked = MagicMock()
-
-        sidebar = Sidebar(
-            root,
-            current_user=me,
-            on_contact_selected=lambda u: None,
-            on_add_contact_clicked=add_clicked,
-            on_theme_toggle_clicked=theme_clicked,
-        )
-
         # Trigger Add Contact button command
         sidebar.add_btn.invoke()
         assert add_clicked.call_count == 1
@@ -137,22 +144,21 @@ def test_sidebar_action_buttons() -> None:
         sidebar.theme_btn.invoke()
         assert theme_clicked.call_count == 1
     finally:
-        root.destroy()
+        if sidebar.winfo_exists():
+            sidebar.destroy()
 
 
-def test_sidebar_hover_states() -> None:
+def test_sidebar_hover_states(root) -> None:
     """Verify hover enter and leave update background color for unselected card."""
-    root = customtkinter.CTk()
+    me = User("me", "me", "You", "ME", True)
+    sidebar = Sidebar(
+        root,
+        current_user=me,
+        on_contact_selected=lambda u: None,
+        on_add_contact_clicked=lambda: None,
+        on_theme_toggle_clicked=lambda: None,
+    )
     try:
-        me = User("me", "me", "You", "ME", True)
-        sidebar = Sidebar(
-            root,
-            current_user=me,
-            on_contact_selected=lambda u: None,
-            on_add_contact_clicked=lambda: None,
-            on_theme_toggle_clicked=lambda: None,
-        )
-
         contact = User("alice", "alice", "Alice Smith", "AS", True)
         sidebar.set_contacts([contact])
         card = sidebar._card_widgets["alice"]
@@ -180,4 +186,5 @@ def test_sidebar_hover_states() -> None:
         sidebar._on_card_hover_leave("alice")
         assert card.cget("fg_color") == Theme.BG_SELECTED
     finally:
-        root.destroy()
+        if sidebar.winfo_exists():
+            sidebar.destroy()

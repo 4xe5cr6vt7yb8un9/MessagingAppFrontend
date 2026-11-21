@@ -27,14 +27,37 @@ def _clean_icons_and_tk():
     _ICON_CACHE.clear()
     yield
     _ICON_CACHE.clear()
-    time.sleep(0.05)
+    time.sleep(0.1)
+
+
+def _create_app(service: Any, max_retries: int = 3) -> MessagingApp:
+    """Create MessagingApp instance with automatic retry on transient Tkinter initialization locks."""
+    for attempt in range(max_retries):
+        try:
+            return MessagingApp(service=service)
+        except Exception:
+            if attempt == max_retries - 1:
+                raise
+            time.sleep(0.15)
+    return MessagingApp(service=service)
+
+
+def _create_ctk(max_retries: int = 3) -> customtkinter.CTk:
+    """Create CTk instance with automatic retry on transient Tkinter initialization locks."""
+    for attempt in range(max_retries):
+        try:
+            return customtkinter.CTk()
+        except Exception:
+            if attempt == max_retries - 1:
+                raise
+            time.sleep(0.15)
+    return customtkinter.CTk()
 
 
 def test_sidebar_connection_status_update():
     """Verify that sidebar contains connection_pill and responds to connection status updates."""
-    root = customtkinter.CTk()
     service = DummyMessagingService()
-    app = MessagingApp(service=service)
+    app = _create_app(service=service)
 
     try:
         # Check that status pill exists on sidebar
@@ -51,15 +74,11 @@ def test_sidebar_connection_status_update():
         assert "Disconnected" in app.sidebar.connection_pill.cget("text")
     finally:
         app.destroy()
-        try:
-            root.destroy()
-        except Exception:
-            pass
 
 
 def test_add_user_modal_verifying_state_and_error_reenable():
     """Verify modal disables submit button with 'Verifying...' and re-enables on error."""
-    root = customtkinter.CTk()
+    root = _create_ctk()
     try:
         submitted_args: list[tuple[str, str]] = []
 
@@ -94,7 +113,7 @@ def test_add_user_modal_verifying_state_and_error_reenable():
 def test_app_presence_update_ui():
     """Verify _handle_presence_update_ui updates contact status dot in sidebar and chat header."""
     service = DummyMessagingService(simulation_delay=0)
-    app = MessagingApp(service=service)
+    app = _create_app(service=service)
     try:
         contacts = service.get_contacts()
         alice = contacts[0]
@@ -139,7 +158,7 @@ def test_app_subscribes_to_connection_and_presence():
             presence_cbs.append(callback)
 
     mock_service = MockTcpService()
-    app = MessagingApp(service=mock_service)
+    app = _create_app(service=mock_service)
     try:
         assert len(status_cbs) == 1
         assert len(presence_cbs) == 1
