@@ -117,3 +117,26 @@ def test_invalid_timestamp_fallback(db_cache: DatabaseCache) -> None:
     assert messages[0].id == "m_corrupt"
     assert isinstance(messages[0].timestamp, datetime)
 
+
+def test_schema_indexes_exist(db_cache: DatabaseCache) -> None:
+    with db_cache._lock, db_cache._get_connection() as conn:
+        cursor = conn.execute(
+            "SELECT name FROM sqlite_master WHERE type='index' AND tbl_name='messages'"
+        )
+        indexes = {row["name"] for row in cursor.fetchall()}
+
+    assert "idx_messages_pair" in indexes
+    assert "idx_messages_recipient_ts" in indexes
+
+
+def test_connection_closes_deterministically(tmp_path: Path) -> None:
+    db_file = tmp_path / "lock_test.db"
+    cache = DatabaseCache(db_file)
+    msg = Message("m1", "alice", "me", "hi", datetime.now(), False)
+    cache.save_message(msg)
+
+    # If connection was not closed, attempting to open in exclusive mode or unlink can fail on Windows
+    db_file.unlink()
+    assert not db_file.exists()
+
+

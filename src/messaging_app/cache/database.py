@@ -1,5 +1,7 @@
 """Local SQLite database cache for persistent offline chat history and contacts."""
 
+from collections.abc import Generator
+from contextlib import contextmanager
 from datetime import datetime
 from pathlib import Path
 import sqlite3
@@ -18,10 +20,16 @@ class DatabaseCache:
         self._lock = threading.Lock()
         self._init_schema()
 
-    def _get_connection(self) -> sqlite3.Connection:
+    @contextmanager
+    def _get_connection(self) -> Generator[sqlite3.Connection, None, None]:
+        """Context manager yielding an active SQLite connection and guaranteeing closure."""
         conn = sqlite3.connect(str(self.db_path), timeout=10.0)
         conn.row_factory = sqlite3.Row
-        return conn
+        try:
+            with conn:
+                yield conn
+        finally:
+            conn.close()
 
     def _init_schema(self) -> None:
         with self._lock, self._get_connection() as conn:
@@ -47,6 +55,9 @@ class DatabaseCache:
 
                 CREATE INDEX IF NOT EXISTS idx_messages_pair 
                 ON messages(sender_id, recipient_id, timestamp);
+
+                CREATE INDEX IF NOT EXISTS idx_messages_recipient_ts 
+                ON messages(recipient_id, timestamp);
                 """
             )
 
