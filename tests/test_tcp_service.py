@@ -193,6 +193,10 @@ def test_add_contact_flow(tmp_path: Path, mock_messaging_server) -> None:
 
     service.stop()
 
+    # Disconnected state raises ConnectionError
+    with pytest.raises(ConnectionError, match="not connected"):
+        service.add_contact("bob", "Bob")
+
 
 def test_incoming_message_and_callbacks(tmp_path: Path, mock_messaging_server) -> None:
     """Verify incoming chat message packets are saved to DB and delivered to callbacks."""

@@ -2,7 +2,7 @@
 
 from pathlib import Path
 import sys
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock
 import pytest
 
 # Ensure src directory is in sys.path

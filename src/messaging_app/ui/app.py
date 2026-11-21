@@ -170,7 +170,7 @@ class MessagingApp(customtkinter.CTk):
             if self._modal_instance and self._modal_instance.winfo_exists():
                 self._modal_instance.destroy()
                 self._modal_instance = None
-        except ValueError as err:
+        except (ValueError, ConnectionError) as err:
             if self._modal_instance and self._modal_instance.winfo_exists():
                 self._modal_instance.set_error(str(err))
 

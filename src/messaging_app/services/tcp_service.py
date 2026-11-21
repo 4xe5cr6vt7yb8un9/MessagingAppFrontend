@@ -157,6 +157,9 @@ class TcpMessagingService:
         if not clean_user:
             raise ValueError("Username cannot be empty.")
 
+        if not self._client.is_connected():
+            raise ConnectionError("Cannot add contact: not connected to server.")
+
         # Query server
         remote_user = self.query_user(clean_user)
         if remote_user is None:
