@@ -194,3 +194,34 @@ def test_tcp_client_error_resilience(mock_server):
     assert received[0]["action"] == "survived"
 
     client.stop()
+
+
+def test_tcp_client_unserializable_packet_discarded(mock_server):
+    host, port, clients = mock_server
+
+    client = TcpClient(
+        host=host,
+        port=port,
+        on_packet=lambda p: None,
+        on_status=lambda s, d: None,
+        reconnect_interval=0.1,
+    )
+    client.start()
+    time.sleep(0.2)
+
+    server_conn = clients[0]
+
+    # Send an un-serializable packet (e.g. object with a custom un-serializable type)
+    client.send_packet({"action": "bad", "unserializable": object()})
+    # Followed by a valid packet
+    client.send_packet({"action": "valid", "msg": "ok"})
+    time.sleep(0.3)
+
+    server_conn.settimeout(0.5)
+    raw_data = server_conn.recv(4096)
+    server_pkts, _ = decode_lines(raw_data)
+    assert len(server_pkts) == 1
+    assert server_pkts[0]["action"] == "valid"
+    assert server_pkts[0]["msg"] == "ok"
+
+    client.stop()

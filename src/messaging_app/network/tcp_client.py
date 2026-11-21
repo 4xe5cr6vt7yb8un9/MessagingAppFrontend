@@ -35,7 +35,8 @@ class TcpClient:
 
     def is_connected(self) -> bool:
         """Return True if socket is currently active and connected."""
-        return self._connected
+        with self._lock:
+            return self._connected
 
     def start(self) -> None:
         """Start persistent background connection loop thread."""
@@ -88,18 +89,23 @@ class TcpClient:
 
         while not self._stop_event.is_set():
             self._set_status("CONNECTING", f"{self.host}:{self.port}")
-            sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-            with self._lock:
-                if self._stop_event.is_set():
-                    sock.close()
-                    break
-                self._sock = sock
-
+            sock: socket.socket | None = None
             try:
+                sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+                with self._lock:
+                    if self._stop_event.is_set():
+                        sock.close()
+                        break
+                    self._sock = sock
+
                 sock.settimeout(4.0)
                 sock.connect((self.host, self.port))
                 if self._stop_event.is_set():
+                    with self._lock:
+                        self._sock = None
+                    sock.close()
                     break
+
                 sock.setblocking(False)
                 with self._lock:
                     self._connected = True
@@ -111,10 +117,11 @@ class TcpClient:
                 with self._lock:
                     self._connected = False
                     self._sock = None
-                try:
-                    sock.close()
-                except Exception:
-                    pass
+                if sock is not None:
+                    try:
+                        sock.close()
+                    except Exception:
+                        pass
                 if not self._stop_event.is_set():
                     self._set_status("RECONNECTING", str(exc))
                     self._stop_event.wait(backoff)
@@ -123,10 +130,11 @@ class TcpClient:
                 with self._lock:
                     self._connected = False
                     self._sock = None
-                try:
-                    sock.close()
-                except Exception:
-                    pass
+                if sock is not None:
+                    try:
+                        sock.close()
+                    except Exception:
+                        pass
                 if not self._stop_event.is_set():
                     self._set_status("RECONNECTING", "Connection closed by remote host")
                     self._stop_event.wait(backoff)
@@ -160,8 +168,14 @@ class TcpClient:
                         packet = self._send_queue.get_nowait()
                     except queue.Empty:
                         break
+
                     try:
                         data = encode_packet(packet)
+                    except (TypeError, ValueError, Exception):
+                        # Discard un-serializable payload safely without crashing worker thread
+                        continue
+
+                    try:
                         sock.sendall(data)
                     except BlockingIOError:
                         self._send_queue.put(packet)
