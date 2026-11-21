@@ -172,6 +172,16 @@ class ChatArea(customtkinter.CTkFrame):
         self.header_status.configure(text=status_text, text_color=status_color)
         self.input_entry.focus()
 
+    def update_presence(self, user_id: str, is_online: bool) -> None:
+        """Update active contact status indicator if matching user_id."""
+        if self.active_contact and self.active_contact.id == user_id:
+            import dataclasses
+
+            self.active_contact = dataclasses.replace(self.active_contact, is_online=is_online)
+            status_text = "● Online" if is_online else "○ Offline"
+            status_color = Theme.STATUS_ONLINE if is_online else Theme.STATUS_OFFLINE
+            self.header_status.configure(text=status_text, text_color=status_color)
+
     def set_messages(self, messages: list[Message]) -> None:
         """Populate message stream with provided messages list."""
         self._messages = list(messages)

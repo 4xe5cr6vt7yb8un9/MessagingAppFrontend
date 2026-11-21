@@ -34,11 +34,13 @@ class Sidebar(customtkinter.CTkFrame):
         self._selected_contact_id: Optional[str] = None
         self._card_widgets: dict[str, customtkinter.CTkFrame] = {}
         self._avatar_widgets: dict[str, customtkinter.CTkLabel] = {}
+        self._status_dot_widgets: dict[str, customtkinter.CTkLabel] = {}
 
         self.theme_btn: customtkinter.CTkButton
         self.add_btn: customtkinter.CTkButton
         self.search_entry: customtkinter.CTkEntry
         self.contacts_scroll: customtkinter.CTkScrollableFrame
+        self.connection_pill: customtkinter.CTkLabel
 
         self._build_ui()
 
@@ -60,13 +62,26 @@ class Sidebar(customtkinter.CTkFrame):
         )
         avatar_chip.pack(side="left")
 
+        user_info = customtkinter.CTkFrame(header_frame, fg_color="transparent")
+        user_info.pack(side="left", padx=10)
+
         name_label = customtkinter.CTkLabel(
-            header_frame,
+            user_info,
             text=self._current_user.display_name,
             font=(Theme.FONT_FAMILY, 14, "bold"),
             text_color=Theme.TEXT_PRIMARY,
+            anchor="w",
         )
-        name_label.pack(side="left", padx=10)
+        name_label.pack(anchor="w")
+
+        self.connection_pill = customtkinter.CTkLabel(
+            user_info,
+            text="✕ Disconnected",
+            font=(Theme.FONT_FAMILY, 10),
+            text_color="#EF4444",
+            anchor="w",
+        )
+        self.connection_pill.pack(anchor="w")
 
         self.theme_btn = customtkinter.CTkButton(
             header_frame,
@@ -146,6 +161,7 @@ class Sidebar(customtkinter.CTkFrame):
             widget.destroy()
         self._card_widgets.clear()
         self._avatar_widgets.clear()
+        self._status_dot_widgets.clear()
 
         for contact in self._displayed_contacts:
             is_selected = (contact.id == self._selected_contact_id)
@@ -205,6 +221,7 @@ class Sidebar(customtkinter.CTkFrame):
 
             self._card_widgets[contact.id] = card
             self._avatar_widgets[contact.id] = avatar
+            self._status_dot_widgets[contact.id] = status_dot
 
             # Event bindings for clicking and hover states
             interactive_widgets = [card, avatar, info_frame, name_lbl, user_lbl, status_dot]
@@ -217,6 +234,41 @@ class Sidebar(customtkinter.CTkFrame):
         """Handle contact card selection."""
         self.select_contact(contact.id)
         self._on_contact_selected(contact)
+
+    def set_connection_status(self, status: str, detail: str = "") -> None:
+        """Update connection indicator text and color based on network status."""
+        st = (status or "").upper()
+        if st == "CONNECTED":
+            text = "● Connected"
+            color = "#10B981"
+        elif st == "RECONNECTING":
+            text = "○ Reconnecting..."
+            color = "#F59E0B"
+        else:
+            text = "✕ Disconnected"
+            color = "#EF4444"
+
+        if hasattr(self, "connection_pill") and self.connection_pill.winfo_exists():
+            self.connection_pill.configure(text=text, text_color=color)
+
+    def update_presence(self, user_id: str, is_online: bool) -> None:
+        """Update presence status for a contact in sidebar cards and stored contact objects."""
+        import dataclasses
+
+        self._all_contacts = [
+            dataclasses.replace(c, is_online=is_online) if c.id == user_id else c
+            for c in self._all_contacts
+        ]
+        self._displayed_contacts = [
+            dataclasses.replace(c, is_online=is_online) if c.id == user_id else c
+            for c in self._displayed_contacts
+        ]
+
+        dot = self._status_dot_widgets.get(user_id)
+        if dot and dot.winfo_exists():
+            dot.configure(
+                text_color=Theme.STATUS_ONLINE if is_online else Theme.STATUS_OFFLINE
+            )
 
     def select_contact(self, user_id: str) -> None:
         """Update selection state and visual appearance of contact cards."""

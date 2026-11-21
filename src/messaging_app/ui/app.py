@@ -19,6 +19,8 @@ class MessagingApp(customtkinter.CTk):
     def __init__(self, service: MessagingServiceProtocol, **kwargs: Any) -> None:
         """Initialize main application window, configure layouts, and wire service events."""
         super().__init__(**kwargs)
+        import tkinter
+        tkinter._default_root = self
         self.service: MessagingServiceProtocol = service
 
         self.title("NexusChat — Python Messaging App")
@@ -68,6 +70,12 @@ class MessagingApp(customtkinter.CTk):
         self.service.subscribe_message_received(self._on_message_received_async)
         self.service.subscribe_contact_added(self._on_contact_added_async)
 
+        if hasattr(self.service, "subscribe_connection_status"):
+            self.service.subscribe_connection_status(self._on_connection_status_async)
+
+        if hasattr(self.service, "subscribe_presence_updated"):
+            self.service.subscribe_presence_updated(self._on_presence_updated_async)
+
     def _load_initial_data(self) -> None:
         """Load contacts from service into sidebar and select the first active contact."""
         contacts = self.service.get_contacts()
@@ -115,6 +123,33 @@ class MessagingApp(customtkinter.CTk):
         """Refresh contacts list in sidebar and auto-select the newly added contact."""
         self.sidebar.set_contacts(self.service.get_contacts())
         self.select_contact(user)
+
+    def _on_connection_status_async(self, status: str, detail: str = "") -> None:
+        """Ensure thread-safe GUI updates for connection status transitions."""
+        try:
+            if self.winfo_exists():
+                self.after(0, self.sidebar.set_connection_status, status, detail)
+        except Exception:
+            pass
+
+    def _on_presence_updated_async(self, user_id: str, is_online: bool) -> None:
+        """Ensure thread-safe GUI updates for contact presence updates."""
+        try:
+            if self.winfo_exists():
+                self.after(0, self._handle_presence_update_ui, user_id, is_online)
+        except Exception:
+            pass
+
+    def _handle_presence_update_ui(self, user_id: str, is_online: bool) -> None:
+        """Update contact presence dot in sidebar and chat header."""
+        import dataclasses
+
+        if hasattr(self, "sidebar") and hasattr(self.sidebar, "update_presence"):
+            self.sidebar.update_presence(user_id, is_online)
+        if self._active_contact and self._active_contact.id == user_id:
+            self._active_contact = dataclasses.replace(self._active_contact, is_online=is_online)
+        if hasattr(self, "chat_area") and hasattr(self.chat_area, "update_presence"):
+            self.chat_area.update_presence(user_id, is_online)
 
     def open_add_contact_dialog(self) -> None:
         """Open contact creation modal dialog, focusing existing instance if already open."""

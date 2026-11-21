@@ -136,8 +136,10 @@ class AddUserModal(customtkinter.CTkToplevel):
         self.bind("<Escape>", self._handle_escape)
 
     def set_error(self, message: str) -> None:
-        """Display validation error message inline in red text."""
+        """Display validation error message inline in red text and re-enable submit button."""
         self.error_label.configure(text=message)
+        if hasattr(self, "submit_btn") and self.submit_btn.winfo_exists():
+            self.submit_btn.configure(state="normal", text="Add Contact")
 
     def _handle_return(self, _event: Any = None) -> None:
         """Handle Return key press in entry fields to submit form."""
@@ -148,7 +150,10 @@ class AddUserModal(customtkinter.CTkToplevel):
         self.destroy()
 
     def _handle_submit(self) -> None:
-        """Validate input values and invoke on_submit callback."""
+        """Validate input values, show verifying state, and invoke on_submit callback."""
+        if hasattr(self, "submit_btn") and self.submit_btn.cget("state") == "disabled":
+            return
+
         username = self.username_entry.get().strip()
         display_name = self.name_entry.get().strip()
 
@@ -156,4 +161,14 @@ class AddUserModal(customtkinter.CTkToplevel):
             self.set_error("Username is required.")
             return
 
-        self.on_submit(username, display_name)
+        self.error_label.configure(text="")
+        self.submit_btn.configure(state="disabled", text="Verifying...")
+        try:
+            self.update_idletasks()
+        except Exception:
+            pass
+
+        try:
+            self.on_submit(username, display_name)
+        except Exception as err:
+            self.set_error(str(err))
