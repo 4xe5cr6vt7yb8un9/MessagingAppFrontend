@@ -113,7 +113,7 @@ class TcpMessagingService:
     def query_user(self, username: str, timeout: float = 5.0) -> User | None:
         """Query remote server over TCP to check if username exists."""
         clean_user = username.strip().lstrip("@")
-        if not clean_user:
+        if not clean_user or timeout <= 0 or not self._client.is_connected():
             return None
 
         query_id = str(uuid.uuid4()).replace("-", "")[:8]
@@ -260,18 +260,21 @@ class TcpMessagingService:
             # Sync historical messages from server
             raw_messages = packet.get("messages", [])
             parsed_messages: list[Message] = []
-            for item in raw_messages:
-                m_id = item.get("message_id", str(uuid.uuid4()).replace("-", "")[:8])
-                s_id = item.get("sender_id", "")
-                r_id = item.get("receiver_id") or item.get("recipient_id") or self._current_user.id
-                cnt = item.get("content", "")
-                is_out = (s_id == self._current_user.id)
-                ts_val = item.get("timestamp")
-                try:
-                    t_stamp = datetime.fromisoformat(ts_val) if ts_val else datetime.now()
-                except Exception:
-                    t_stamp = datetime.now()
-                parsed_messages.append(Message(m_id, s_id, r_id, cnt, t_stamp, is_out))
+            if isinstance(raw_messages, list):
+                for item in raw_messages:
+                    if not isinstance(item, dict):
+                        continue
+                    m_id = str(item.get("message_id") or uuid.uuid4().hex[:8])
+                    s_id = str(item.get("sender_id", ""))
+                    r_id = str(item.get("receiver_id") or item.get("recipient_id") or self._current_user.id)
+                    cnt = str(item.get("content", ""))
+                    is_out = (s_id == self._current_user.id)
+                    ts_val = item.get("timestamp")
+                    try:
+                        t_stamp = datetime.fromisoformat(ts_val) if ts_val else datetime.now()
+                    except Exception:
+                        t_stamp = datetime.now()
+                    parsed_messages.append(Message(m_id, s_id, r_id, cnt, t_stamp, is_out))
 
             self.db.merge_history(parsed_messages)
 

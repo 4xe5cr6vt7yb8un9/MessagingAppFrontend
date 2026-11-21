@@ -1,5 +1,6 @@
 """Integration and unit tests for TcpMessagingService."""
 
+from collections.abc import Callable
 from datetime import datetime
 from pathlib import Path
 import socket
@@ -21,6 +22,16 @@ from messaging_app.models.user import User
 from messaging_app.network.protocol_frames import decode_lines, encode_packet
 from messaging_app.services.protocol import MessagingServiceProtocol
 from messaging_app.services.tcp_service import TcpMessagingService
+
+
+def wait_until(predicate: Callable[[], bool], timeout: float = 2.0, interval: float = 0.05) -> bool:
+    """Poll predicate until True or timeout expires."""
+    deadline = time.time() + timeout
+    while time.time() < deadline:
+        if predicate():
+            return True
+        time.sleep(interval)
+    return predicate()
 
 
 @pytest.fixture
@@ -105,18 +116,16 @@ def test_service_protocol_and_lifecycle(tmp_path: Path, mock_messaging_server) -
     assert isinstance(service, MessagingServiceProtocol)
 
     service.start()
-    time.sleep(0.4)
-
-    # Verify identify handshake was sent to server
-    assert any(p.get("action") == "identify" and p.get("username") == "alice" for p in server_pkts)
+    # Wait until identify handshake is received
+    assert wait_until(lambda: any(p.get("action") == "identify" and p.get("username") == "alice" for p in server_pkts))
 
     # Test send message
     sent_msg = service.send_message("user_bob", "Hello Bob over TCP!")
     assert sent_msg.content == "Hello Bob over TCP!"
     assert sent_msg.is_outgoing is True
 
-    time.sleep(0.2)
-    # Verify outgoing packet replaced sender_id with receiver_id
+    # Poll until outgoing packet replaced sender_id with receiver_id
+    assert wait_until(lambda: any(p.get("action") == "message" for p in server_pkts))
     msg_pkts = [p for p in server_pkts if p.get("action") == "message"]
     assert len(msg_pkts) >= 1
     assert msg_pkts[0]["receiver_id"] == "user_bob"
@@ -156,7 +165,7 @@ def test_add_contact_flow(tmp_path: Path, mock_messaging_server) -> None:
     db = DatabaseCache(config.local_db_path)
     service = TcpMessagingService(config, db)
     service.start()
-    time.sleep(0.3)
+    assert wait_until(lambda: service._client.is_connected())
 
     added_contacts: list[User] = []
     service.subscribe_contact_added(lambda u: added_contacts.append(u))
@@ -203,9 +212,7 @@ def test_incoming_message_and_callbacks(tmp_path: Path, mock_messaging_server) -
     service.subscribe_message_received(lambda m: received_messages.append(m))
 
     service.start()
-    time.sleep(0.4)
-
-    assert len(server_conns) > 0
+    assert wait_until(lambda: len(server_conns) > 0 and service._client.is_connected())
     conn = server_conns[0]
 
     # Server pushes an incoming message
@@ -219,8 +226,7 @@ def test_incoming_message_and_callbacks(tmp_path: Path, mock_messaging_server) -
     }
     conn.sendall(encode_packet(incoming_pkt))
 
-    time.sleep(0.3)
-    assert len(received_messages) == 1
+    assert wait_until(lambda: len(received_messages) == 1)
     msg = received_messages[0]
     assert msg.id == "msg_inc_1"
     assert msg.sender_id == "user_bob"
@@ -248,12 +254,13 @@ def test_history_sync_packet(tmp_path: Path, mock_messaging_server) -> None:
     db = DatabaseCache(config.local_db_path)
     service = TcpMessagingService(config, db)
     service.start()
-    time.sleep(0.4)
+    assert wait_until(lambda: len(server_conns) > 0 and service._client.is_connected())
 
     conn = server_conns[0]
     sync_pkt = {
         "action": "history_sync",
         "messages": [
+            "malformed_non_dict_entry",  # Guard verification
             {
                 "message_id": "hist_1",
                 "sender_id": "user_bob",
@@ -271,7 +278,7 @@ def test_history_sync_packet(tmp_path: Path, mock_messaging_server) -> None:
         ],
     }
     conn.sendall(encode_packet(sync_pkt))
-    time.sleep(0.3)
+    assert wait_until(lambda: len(service.get_messages("user_bob")) == 2)
 
     messages = service.get_messages("user_bob")
     assert len(messages) == 2
@@ -307,9 +314,7 @@ def test_presence_and_connection_status_subscriptions(tmp_path: Path, mock_messa
     service.subscribe_connection_status(lambda st, det: status_updates.append((st, det)))
 
     service.start()
-    time.sleep(0.4)
-
-    assert any(st == "CONNECTED" for st, _ in status_updates)
+    assert wait_until(lambda: len(server_conns) > 0 and any(st == "CONNECTED" for st, _ in status_updates))
 
     conn = server_conns[0]
     status_pkt = {
@@ -318,9 +323,8 @@ def test_presence_and_connection_status_subscriptions(tmp_path: Path, mock_messa
         "is_online": True,
     }
     conn.sendall(encode_packet(status_pkt))
-    time.sleep(0.3)
+    assert wait_until(lambda: any(uid == "user_bob" and online is True for uid, online in presence_updates))
 
-    assert any(uid == "user_bob" and online is True for uid, online in presence_updates)
     contacts = service.get_contacts()
     bob = next(c for c in contacts if c.id == "user_bob")
     assert bob.is_online is True
@@ -343,3 +347,27 @@ def test_send_message_validation(tmp_path: Path) -> None:
 
     with pytest.raises(ValueError, match="cannot be empty"):
         service.send_message("user_bob", "   ")
+
+
+def test_query_user_fast_fail_disconnected(tmp_path: Path) -> None:
+    """Verify query_user fast-fails returning None immediately when disconnected or timeout<=0."""
+    config = AppConfig(
+        server_ip="127.0.0.1",
+        server_port=9999,
+        client_user_id="user_alice",
+        client_username="alice",
+        client_display_name="Alice",
+        local_db_path=tmp_path / "cache.db",
+    )
+    db = DatabaseCache(config.local_db_path)
+    service = TcpMessagingService(config, db)
+    # Not started -> disconnected
+    start_time = time.time()
+    result = service.query_user("bob", timeout=5.0)
+    elapsed = time.time() - start_time
+    assert result is None
+    assert elapsed < 0.1  # Fast-failed immediately!
+
+    # timeout <= 0
+    assert service.query_user("bob", timeout=0) is None
+    assert service.query_user("bob", timeout=-1.0) is None
